@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wave2data"
+version = "0.1"
+authors = [
+  { name="Tobias Binkowski", email="sessl3r@gmail.com" },
+]
+readme="README.md"
+description="Convert protocol data from waveforms into data"
+classifiers = [
+  "Development Status :: 4 - Beta"
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["wave2data"]

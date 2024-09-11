@@ -68,39 +68,21 @@ class WaveInput(ABC):
             ret[x.name] = x
         return ret
 
-#    def cast_value(self, signal, value: str, default: int = None):
-#        """ try to cast and default some values from signal levels """
-#
-#        # TODO: handle all x/z in nets and buses
-#
-#        if isinstance(value, int):
-#            return bytes(value)
-#
-#        if signal.length > 1:
-#            return bytes(int(value[i:i+8], 2)
-#                         for i in range(0, len(value), 8))
-#        if value in ['0', '1']:
-#            return int(value)
-#        if default is not None:
-#            return default
-#
-#        raise ValueError(f"value {value} can not be decoded")
-
 
 class FSTWaveInput(WaveInput):
     """ FST waveform input """
 
-    def __init__(self, filename):
-        super().__init__(filename)
-        self._fst = pylibfst.lib.fstReaderOpen(self._filename.encode("UTF-8"))
-        (unused, self._fstsignals) = pylibfst.get_scopes_signals2(self.fst)
-        for s in self._fstsignals.by_name.values():
-            if '[' in s.name and s.name.endswith(']'):
-                temp = s.name.split('[')
-                name = temp[0]
-                offset = int(temp[1][:-1])
-                subsignal = Signal(name, s.length, s.handle)
-                # check if name already exists
+#    def __init__(self, filename):
+#        super().__init__(filename)
+#        self._fst = pylibfst.lib.fstReaderOpen(self._filename.encode("UTF-8"))
+#        (unused, self._fstsignals) = pylibfst.get_scopes_signals2(self.fst)
+#        for s in self._fstsignals.by_name.values():
+#            if '[' in s.name and s.name.endswith(']'):
+#                temp = s.name.split('[')
+#                name = temp[0]
+#                offset = int(temp[1][:-1])
+#                subsignal = Signal(name, s.length, s.handle)
+#                # check if name already exists
 # TODO: as in VCD part...
 #                match = [n for n in self.signals if n.name == name]
 #                if len(match):
@@ -112,63 +94,63 @@ class FSTWaveInput(WaveInput):
 #                                                handle={offset: subsignal}))
 #            else:
 #                self._signals.append(Signal(s.name, s.length, handle=s.handle))
-
-    def __repr__(self):
-        ret = "<FSTWaveInput with signals: "
-        for s in self.signals.values():
-            ret += f"{s} "
-        return f"{ret}>"
-
-    def __iter__(self):
-        self._timestamps = pylibfst.lib.fstReaderGetTimestamps(self.fst)
-        self._timestamp_idx = 0
-        return self
-
-    def __next__(self):
-        timestamp = self._timestamps.val[self._timestamp_idx]
-        self._timestamp_idx += 1
-        cbuf = pylibfst.ffi.new("char[4096]")
-        ret = self.signals.copy()
-        for signal in ret:
-            if isinstance(signal.handle, dict):
-                for offset, sub in signal.handle.items():
-                    value = pylibfst.helpers.string(
-                        pylibfst.lib.fstReaderGetValueFromHandleAtTime(
-                            self.fst, timestamp, sub.handle, cbuf
-                        )
-                    )
-                    value = self.cast_value(sub, value, default=0)
-                    sub.value = value
-
-            else:
-                value = pylibfst.helpers.string(
-                    pylibfst.lib.fstReaderGetValueFromHandleAtTime(
-                        self.fst, timestamp, signal.handle, cbuf
-                    )
-                )
-                value = self.cast_value(signal, value, default=0)
-                signal.value = value
-
-        return Sample(timestamp, ret)
-
-    @property
-    def fst(self):
-        return self._fst
-
-    def filter(self, data):
-        if isinstance(data, str):
-            signals = self.get(data)
-        else:
-            signals = data
-        pylibfst.lib.fstReaderClrFacProcessMaskAll(self.fst)
-        for signal in signals.values():
-            if isinstance(signal.handle, dict):
-                for h in signal.handle:
-                    pylibfst.lib.fstReaderSetFacProcessMask(self.fst, h)
-            else:
-                pylibfst.lib.fstReaderSetFacProcessMask(self.fst, signal.handle)
-
-        self._filter = signals
+#
+#    def __repr__(self):
+#        ret = "<FSTWaveInput with signals: "
+#        for s in self.signals.values():
+#            ret += f"{s} "
+#        return f"{ret}>"
+#
+#    def __iter__(self):
+#        self._timestamps = pylibfst.lib.fstReaderGetTimestamps(self.fst)
+#        self._timestamp_idx = 0
+#        return self
+#
+#    def __next__(self):
+#        timestamp = self._timestamps.val[self._timestamp_idx]
+#        self._timestamp_idx += 1
+#        cbuf = pylibfst.ffi.new("char[4096]")
+#        ret = self.signals.copy()
+#        for signal in ret:
+#            if isinstance(signal.handle, dict):
+#                for offset, sub in signal.handle.items():
+#                    value = pylibfst.helpers.string(
+#                        pylibfst.lib.fstReaderGetValueFromHandleAtTime(
+#                            self.fst, timestamp, sub.handle, cbuf
+#                        )
+#                    )
+#                    value = self.cast_value(sub, value, default=0)
+#                    sub.value = value
+#
+#            else:
+#                value = pylibfst.helpers.string(
+#                    pylibfst.lib.fstReaderGetValueFromHandleAtTime(
+#                        self.fst, timestamp, signal.handle, cbuf
+#                    )
+#                )
+#                value = self.cast_value(signal, value, default=0)
+#                signal.value = value
+#
+#        return Sample(timestamp, ret)
+#
+#    @property
+#    def fst(self):
+#        return self._fst
+#
+#    def filter(self, data):
+#        if isinstance(data, str):
+#            signals = self.get(data)
+#        else:
+#            signals = data
+#        pylibfst.lib.fstReaderClrFacProcessMaskAll(self.fst)
+#        for signal in signals.values():
+#            if isinstance(signal.handle, dict):
+#                for h in signal.handle:
+#                    pylibfst.lib.fstReaderSetFacProcessMask(self.fst, h)
+#            else:
+#                pylibfst.lib.fstReaderSetFacProcessMask(self.fst, signal.handle)
+#
+#        self._filter = signals
 
 
 class VCDWaveInput(WaveInput):

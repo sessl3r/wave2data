@@ -24,16 +24,19 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
+from enum import Enum
 from .input import WaveInput
 from .wave import Sample
 
 
-class AXIStreamError(Exception):
+class StreamError(Exception):
     pass
 
 
-class AVSFramingError(Exception):
-    pass
+class KeepHandling(Enum):
+    NONE = 0,
+    MASK = 1,
+    SHIFT = 2
 
 
 @dataclass
@@ -41,11 +44,9 @@ class Packet:
     """ wrapper for a generic packet """
 
     name: str
-    starttime: int
+    starttime: float
     data: bytes
-
-    def __post_init__(self):
-        self.endtime = self.starttime
+    endtime: float = None
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name} " \
@@ -67,51 +68,70 @@ class AXISPacket(Packet):
     keep: bytes = None
     beats: int = 0
     backpreasure: int = 0
+    tkeep_mode: KeepHandling = KeepHandling.NONE
+
+    def __post_init__(self):
+        # TODO: implement masking / shifting
+        if self.tkeep_mode == KeepHandling.MASK:
+            pass
+        elif self.tkeep_mode == KeepHandling.SHIFT:
+            pass
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.name}" \
+        ret = f"{self.__class__.__name__}({self.name}" \
                 f"@{self.starttime}:{self.endtime} "\
                 f"beats={self.beats} "\
-                f"backpreasure={self.backpreasure})" \
-                f"\n    data: {self.data.hex()})"
+                f"backpreasure={self.backpreasure})"
+        if len(self.data) > 0:
+            ret += f"\n    data: {self.data.hex(' ', 4)})"
+        if hasattr(self, 'keep') and self.keep:
+            ret += f"\n    keep: {self.keep.hex(' ', 4)})"
+        return ret
 
 
     def add(self, data: bytes, keep: bytes = None, endtime: int = None):
-        """ append data from a sample to this packet """
-        self.data += data
+        """ prepend data from a sample to this packet """
+        self.data = data + self.data
         if keep and self.keep:
-            self.keep += keep
+            self.keep = keep + self.keep
         if endtime:
             self.endtime = endtime
 
 
-class AvalonStreamPacket(Packet):
+@dataclass
+class AVStreamPacket(Packet):
     """ wrapper for Avalon Stream packet """
 
+    strb: bytes = None
+    beats: int = 0
+    backpreasure: int = 0
 
-#class AVSTLPPacket(AVSPacket):
-#
-#    def __init__(self, name: str, starttime: int, endtime: int = None,
-#                 has_func_num: bool = False, has_bar_id: bool = False):
-#        super().__init__(name, starttime, endtime)
-#        self.hdr = bytes()
-#        if has_func_num:
-#            self.func_num = bytes()
-#        if has_bar_id:
-#            self.bar_id = bytes()
-#
-#    def __repr__(self):
-#        return f"<AVSTLPPacket[{self.name}] @{self.starttime}:{self.endtime} {self.hdr.hex()} {self.data.hex()}>"
-#
-#    def add(self, data: bytes, starttime: int = None, endtime: int = None,
-#            hdr: bytes = None, func_num: bytes = None, bar_id: bytes = None):
-#        super().add(data, starttime, endtime)
-#        if hdr:
-#            self.hdr += hdr
-#        if func_num:
-#            self.func_num += func_num
-#        if bar_id:
-#            self.bar_id += bar_id
+    def __repr__(self):
+        ret = f"{self.__class__.__name__}({self.name}" \
+                f"@{self.starttime}:{self.endtime} "\
+                f"beats={self.beats} "\
+                f"backpreasure={self.backpreasure})"
+        if len(self.data) > 0:
+            ret += f"\n    data: {self.data.hex(' ', 4)})"
+        if len(self.strb) > 0:
+            ret += f"\n    strb: {self.strb.hex(' ', 4)})"
+        return ret
+
+    def add(self, data: bytes, strb: bytes = None, endtime: int = None):
+        """ prepend data from a sample to this packet """
+        self.data = data + self.data
+        if strb and self.strb:
+            self.strb = strb + self.strb
+        if endtime:
+            self.endtime = endtime
+
+
+class CorundumTLP(AVStreamPacket):
+    """ wrapper for corundums TLP packet format """
+
+    hdr: bytes
+    func_num: bytes
+    bar_id: bytes
 
 
 @dataclass
@@ -134,7 +154,10 @@ class WaveDecoder(ABC):
         for field in fields(self):
             if "name_" in field.name:
                 name = field.name.replace("name_", "")
-                setattr(self, name, self.waveinput.get(name)[0].name)
+                signals = self.waveinput.get(name)
+                if not len(signals):
+                    continue
+                setattr(self, name, signals[0].name)
 
     def __iter__(self):
         lastsample = None
@@ -152,121 +175,108 @@ class WaveDecoder(ABC):
         pass
 
 
-@dataclass
-class AXIStream(WaveDecoder):
-    """ decoder for AXIStream transfers """
-    name_tvalid: str = "valid"
-    name_tready: str = "ready"
-    name_tlast: str = None
-    name_tdata: str = "data"
-    name_tkeep: str = None
-
+class StreamDecoder(WaveDecoder):
     def __post_init__(self):
         super().__post_init__()
         self.packet = None
         self.backpreasure = 0
         self.beats = 0
 
-    def decode(self, sample: Sample, lastsample: Sample):
-        valid = sample.signals[self.tvalid].value
-        ready = sample.signals[self.tready].value
-        if self.tlast:
-            last = sample.signals[self.tlast].value
-        data = sample.signals[self.tdata].value
-        lastvalid = lastsample.signals[self.tvalid].value
-        lastready = lastsample.signals[self.tready].value
-
+    def handshake_decode(self, timestamp, valid, ready, lastvalid, lastready):
+        # TODO: also should check for all other signals to not change when not
+        # ready
         if lastvalid and not lastready and not valid:
-            raise AXIStreamError(f"@{sample.timestamp}\
-                    AXI-Stream valid dropped while not ready")
+            raise StreamError(f"@{timestamp} valid dropped while not ready")
 
         if valid and not ready:
             self.backpreasure += 1
 
-        if not (valid and ready):
+        if valid and ready:
+            return True
+
+        return False
+
+
+@dataclass
+class AXIStream(StreamDecoder):
+    """ decoder for AXIStream transfers """
+
+    name_tvalid: str = "tvalid"
+    name_tready: str = "tready"
+    name_tlast: str = None
+    name_tdata: str = "tdata"
+    name_tkeep: str = None
+    tkeep_mode: KeepHandling = KeepHandling.NONE
+
+    def decode(self, sample: Sample, lastsample: Sample):
+        valid = sample.signals[self.tvalid].value
+        ready = sample.signals[self.tready].value
+        last = None
+        if self.tlast:
+            last = sample.signals[self.tlast].value
+        data = sample.signals[self.tdata].value
+        keep = None
+        if hasattr(self, 'tkeep'):
+            keep = sample.signals[self.tkeep].value
+        lastvalid = lastsample.signals[self.tvalid].value
+        lastready = lastsample.signals[self.tready].value
+
+        if not self.handshake_decode(sample.timestamp,
+                                     valid, ready, lastvalid, lastready):
             return None
 
         self.beats += 1
         if not self.packet:
-            self.packet = AXISPacket("name", sample.timestamp, data=data)
+            self.packet = AXISPacket("name", starttime=sample.timestamp,
+                                     tkeep_mode=self.tkeep_mode,
+                                     data=data, keep=keep)
         else:
-            self.packet.add(data, sample.timestamp)
+            self.packet.add(data=data, keep=keep, endtime=sample.timestamp)
         if not self.tlast or last:
             self.packet.beats = self.beats
             self.packet.backpreasure = self.backpreasure
+            self.beats = 0
+            self.backpreasure = 0
             temp = self.packet
             self.packet = None
             return temp
 
 
-#@dataclass
-#class AvalonStream(WaveDecoder):
-#    sig_name_valid: str = "valid"
-#    sig_name_ready: str = "ready"
-#    sig_name_sop: str = "sop"
-#    sig_name_eop: str = "eop"
-#    sig_name_data: str = "data"
-#    sig_name_strb: str = None
-#
-#    def decode_valid_ready(self, sample, last):
-#        """ check if sample contains valid data """
-#        # TODO: add avalon violation checks
-#        if sample.valid and sample.ready:
-#            return True
-#        return False
-#
-#    def decode(self, sample: Sample, lastsample: Sample):
-#        if not self.decode_valid_ready(sample, lastsample):
-#            return
-#        else:
-#            pass
-#
-#
-#
-#    def decode(self):
-#        waveform = self.filter_valid_ready_only()
-#        packets = []
-#        for sample in waveform.samples:
-#            sop = sample.values[self.s_sop]
-#            eop = sample.values[self.s_eop]
-#
-#            # TODO: implement strb
-#            if sop:
-#                p = AVSPacket(self.name, sample.timestamp)
-#            assert p is not None, "AVS: got eop with no packet (no sop?)"
-#            p.add(sample.values[self.s_data])
-#            if eop:
-#                p.endtime = sample.timestamp
-#                packets.append(p)
-#                p = None
-#
-#        return packets
-#
-#
-#@dataclass
-#class AVSTLP(AvalonStream):
-#    sig_name_hdr: str = "hdr"
-#
-#    def __repr__(self):
-#        return f"<AVSTLP {self.waveform.signals}>"
-#
-#    def decode(self):
-#        waveform = self.filter_valid_ready_only()
-#        packets = []
-#        p = None
-#        for sample in waveform.samples:
-#            sop = sample.values[self.sig_sop]
-#            eop = sample.values[self.sig_eop]
-#
-#            # TODO: implement strb
-#            if sop:
-#                p = AVSTLPPacket(self.name, sample.timestamp)
-#            assert p is not None, "AVSTLP: got eop with no packet (no sop?)"
-#            p.add(sample.values[self.sig_data], hdr=sample.values[self.sig_hdr])
-#            if eop:
-#                p.endtime = sample.timestamp
-#                packets.append(p)
-#                p = None
-#
-#        return packets
-#
+@dataclass
+class AvalonStream(StreamDecoder):
+    name_valid: str = "valid"
+    name_ready: str = "ready"
+    name_sop: str = "sop"
+    name_eop: str = "eop"
+    name_data: str = "data"
+    name_strb: str = None
+
+    def decode(self, sample: Sample, lastsample: Sample):
+        valid = sample.signals[self.valid].value
+        ready = sample.signals[self.ready].value
+        eop = sample.signals[self.eop].value
+        data = sample.signals[self.data].value
+        strb = None
+        if hasattr(self, 'strb'):
+            strb = sample.signals[self.strb].value
+        lastvalid = lastsample.signals[self.valid].value
+        lastready = lastsample.signals[self.ready].value
+
+        if not self.handshake_decode(sample.timestamp,
+                                     valid, ready, lastvalid, lastready):
+            return None
+
+        self.beats += 1
+        if not self.packet:
+            self.packet = AVStreamPacket("name", sample.timestamp,
+                                         data=data, strb=strb)
+        else:
+            self.packet.add(data=data, strb=strb, endtime=sample.timestamp)
+        if eop:
+            self.packet.beats = self.beats
+            self.packet.backpreasure = self.backpreasure
+            self.beats = 0
+            self.backpreasure = 0
+            temp = self.packet
+            self.packet = None
+            return temp

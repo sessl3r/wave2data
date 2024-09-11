@@ -53,10 +53,16 @@ if args.signals:
     sys.exit(0)
 
 if args.decoder:
-    for decodername in args.decoder:
+    for decoderinfo in args.decoder:
+        decoderinfo = decoderinfo.split(':')
+        decodername = decoderinfo[0]
+        if len(decodername) > 1:
+            args = {}
+            for keyval in decoderinfo[1:]:
+                arg, val = keyval.split('=')
+                args[arg] = val
         decoder_class = getattr(sys.modules["wave2data.decoder"], decodername)
-        decoder = decoder_class("rx", wave,
-                                name_tlast="tlast", name_tkeep="tkeep")
+        decoder = decoder_class("rx", wave, **args)
 
     for packet in decoder:
         print(packet)

@@ -47,6 +47,24 @@ class Signal:
         """ set/update value of the signal or the subsignal """
         if handle not in self.handle.values():
             return False
+        # we have one signal without subsignals
+        if len(self.handle) == 1:
+            if self.length == 1:
+                if isinstance(value, bool):
+                    self.value = value
+                elif isinstance(value, str):
+                    self.value = bool("1" == value)
+                else:
+                    raise NotImplementedError
+            else:
+                if isinstance(value, str):
+                    if len(value) % 2:
+                        value = "0" + value
+                    self.value = bytes.fromhex(value)
+                else:
+                    self.value = value
+            return True
+        # we have vector signal using bit subsignals
         for index, val in self.handle.items():
             if val == handle:
                 if isinstance(self.value, bool):

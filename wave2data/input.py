@@ -37,6 +37,12 @@ class WaveInput(ABC):
         self._signals = {}
         self._filter = self._signals
 
+    def __repr__(self):
+        ret = f"<{self.__class__.__name__} with signals: "
+        for s in self.signals.values():
+            ret += f"{s} "
+        return f"{ret}>"
+
     @abstractmethod
     def __iter__(self):
         pass
@@ -123,12 +129,6 @@ class VCDWaveInput(WaveInput):
                 s.value = bytes((s.length+8-1)//8)
             else:
                 s.value = False
-
-    def __repr__(self):
-        ret = "<VCDWaveInput with signals: "
-        for s in self.signals.values():
-            ret += f"{s} "
-        return f"{ret}>"
 
     def __iter__(self):
         """ iterate through VCD file

@@ -23,8 +23,9 @@ THE SOFTWARE.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, field
 from enum import Enum
+import re
 from .input import WaveInput
 from .wave import Sample
 
@@ -144,9 +145,11 @@ class WaveDecoder(ABC):
     """
 
     name: str
-    waveinput: WaveInput
+    waveinput: WaveInput = field(repr=False)
+    filter: str
 
     def __post_init__(self):
+        self.signals = self.waveinput.get(self.filter)
         self.__create_signals()
 
     def __create_signals(self):
@@ -154,18 +157,16 @@ class WaveDecoder(ABC):
         for field in fields(self):
             if "name_" in field.name:
                 name = field.name.replace("name_", "")
-                signals = self.waveinput.get(name)
-                if not len(signals):
+                regex = getattr(self, field.name)
+                if not regex:
                     continue
-                setattr(self, name, signals[0].name)
+                for signal in self.signals:
+                    if regex in signal.name or re.match(regex, signal.name):
+                        setattr(self, name, signal.name)
 
     def __iter__(self):
-        lastsample = None
         for sample in self.waveinput:
-            if not lastsample:
-                lastsample = sample
-            temp = self.decode(sample, lastsample)
-            lastsample = sample
+            temp = self.decode(sample)
             if not temp:
                 continue
             yield temp
@@ -208,18 +209,21 @@ class AXIStream(StreamDecoder):
     name_tkeep: str = None
     tkeep_mode: KeepHandling = KeepHandling.NONE
 
-    def decode(self, sample: Sample, lastsample: Sample):
+    def decode(self, sample: Sample):
+        if not hasattr(self, "sample"):
+            self.sample = sample
         valid = sample.signals[self.tvalid].value
         ready = sample.signals[self.tready].value
         last = None
-        if self.tlast:
+        if hasattr(self, 'tlast'):
             last = sample.signals[self.tlast].value
         data = sample.signals[self.tdata].value
         keep = None
         if hasattr(self, 'tkeep'):
             keep = sample.signals[self.tkeep].value
-        lastvalid = lastsample.signals[self.tvalid].value
-        lastready = lastsample.signals[self.tready].value
+        lastvalid = self.sample.signals[self.tvalid].value
+        lastready = self.sample.signals[self.tready].value
+        self.sample = sample
 
         if not self.handshake_decode(sample.timestamp,
                                      valid, ready, lastvalid, lastready):
@@ -227,12 +231,12 @@ class AXIStream(StreamDecoder):
 
         self.beats += 1
         if not self.packet:
-            self.packet = AXISPacket("name", starttime=sample.timestamp,
+            self.packet = AXISPacket(self.name, starttime=sample.timestamp,
                                      tkeep_mode=self.tkeep_mode,
                                      data=data, keep=keep)
         else:
             self.packet.add(data=data, keep=keep, endtime=sample.timestamp)
-        if not self.tlast or last:
+        if not hasattr(self, 'tlast') or last:
             self.packet.beats = self.beats
             self.packet.backpreasure = self.backpreasure
             self.beats = 0
@@ -251,7 +255,9 @@ class AvalonStream(StreamDecoder):
     name_data: str = "data"
     name_strb: str = None
 
-    def decode(self, sample: Sample, lastsample: Sample):
+    def decode(self, sample: Sample):
+        if not hasattr(self, "sample"):
+            self.sample = sample
         valid = sample.signals[self.valid].value
         ready = sample.signals[self.ready].value
         eop = sample.signals[self.eop].value
@@ -259,8 +265,9 @@ class AvalonStream(StreamDecoder):
         strb = None
         if hasattr(self, 'strb'):
             strb = sample.signals[self.strb].value
-        lastvalid = lastsample.signals[self.valid].value
-        lastready = lastsample.signals[self.ready].value
+        lastvalid = self.sample.signals[self.valid].value
+        lastready = self.sample.signals[self.ready].value
+        self.sample = sample
 
         if not self.handshake_decode(sample.timestamp,
                                      valid, ready, lastvalid, lastready):

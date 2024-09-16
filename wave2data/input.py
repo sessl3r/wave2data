@@ -59,17 +59,19 @@ class WaveInput(ABC):
     def signals(self):
         return self._filter
 
-    def get(self, regex: str):
+    def get(self, compare: str, regex=False):
         """ get list of signals by matching against regex or substr """
         ret = []
         for signal in self.signals.values():
-            if regex in signal.name or re.match(regex, signal.name):
+            if regex and re.match(compare, signal.name):
+                ret.append(signal)
+            elif not regex and compare in signal.name:
                 ret.append(signal)
         return ret
 
-    def get_dict(self, regex: str):
+    def get_dict(self, compare: str, regex=False):
         """ get dict {name: signal} of signals by matching against regex """
-        temp = self.get(regex)
+        temp = self.get(compare, regex=False)
         ret = {}
         for x in temp:
             ret[x.name] = x
@@ -94,17 +96,21 @@ class VCDWaveInput(WaveInput):
         self._vcd = tokenize(open(filename, "rb"))
         self._create_signals()
         self._set_init_values()
+        self.timestamp = 0
 
     def _create_signals(self):
         """ find and add defined signals and subsignals """
         scope = ""
         for token in self._vcd:
             if token.kind is TokenKind.SCOPE:
-                scope += token.data.ident + '.'
+                scope += token.data.ident
             elif token.kind is TokenKind.UPSCOPE:
-                scope = '.'.join(scope.split('.')[:-2]) + '.'
+                scope = '.'.join(scope.split('.')[:-2])
             elif token.kind is TokenKind.VAR:
-                name = scope + token.data.reference
+                if len(scope):
+                    name = f"{scope}.{token.data.reference}"
+                else:
+                    name = token.data.reference
                 handle = token.data.id_code
                 length = token.data.size
                 index = token.data.bit_index
@@ -142,10 +148,10 @@ class VCDWaveInput(WaveInput):
         for token in self._vcd:
             # On next timestamp we yield samples if anything changed
             if token.kind is TokenKind.CHANGE_TIME:
-                timestamp = token.data * self.timeval
                 if updated:
-                    yield Sample(timestamp, self.signals)
+                    yield Sample(self.timestamp, self.signals)
                     updated = False
+                self.timestamp = token.data * self.timeval
                 continue
             # Capture all changes which are relevant
             elif token.kind is TokenKind.CHANGE_SCALAR:

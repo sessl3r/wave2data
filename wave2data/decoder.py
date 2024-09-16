@@ -55,6 +55,7 @@ class Packet:
 
     def add(self, data: bytes, endtime: int = None):
         """ append data from a sample to this packet """
+        assert isinstance(data, bytes), f"data of invalid class {type(data)}"
         self.data += data
         if endtime:
             self.endtime = endtime
@@ -92,11 +93,9 @@ class AXISPacket(Packet):
 
     def add(self, data: bytes, keep: bytes = None, endtime: int = None):
         """ prepend data from a sample to this packet """
-        self.data = data + self.data
+        super().add(data, endtime)
         if keep and self.keep:
             self.keep = keep + self.keep
-        if endtime:
-            self.endtime = endtime
 
 
 @dataclass
@@ -120,11 +119,9 @@ class AVStreamPacket(Packet):
 
     def add(self, data: bytes, strb: bytes = None, endtime: int = None):
         """ prepend data from a sample to this packet """
-        self.data = data + self.data
+        super().add(data, endtime)
         if strb and self.strb:
             self.strb = strb + self.strb
-        if endtime:
-            self.endtime = endtime
 
 
 class CorundumTLP(AVStreamPacket):
@@ -149,18 +146,24 @@ class WaveDecoder(ABC):
     filter: str
 
     def __post_init__(self):
-        self.signals = self.waveinput.get(self.filter)
+        self.signals = self.waveinput.get_dict(self.filter)
+        self.allsignals = self.waveinput.signals
         self.__create_signals()
 
     def __create_signals(self):
         """ create attributes for each signal """
-        for field in fields(self):
-            if "name_" in field.name:
-                name = field.name.replace("name_", "")
-                regex = getattr(self, field.name)
+        for f in fields(self):
+            if "name_" in f.name:
+                name = f.name.replace("name_", "")
+                regex = getattr(self, f.name)
                 if not regex:
                     continue
-                for signal in self.signals:
+                if regex.startswith('!'):
+                    signals = self.allsignals
+                    regex = regex[1:]
+                else:
+                    signals = self.signals
+                for signal in signals.values():
                     if regex in signal.name or re.match(regex, signal.name):
                         setattr(self, name, signal.name)
 
@@ -175,8 +178,9 @@ class WaveDecoder(ABC):
     def decode(self, sample: Sample):
         pass
 
-
+@dataclass
 class StreamDecoder(WaveDecoder):
+
     def __post_init__(self):
         super().__post_init__()
         self.packet = None
@@ -207,11 +211,16 @@ class AXIStream(StreamDecoder):
     name_tlast: str = None
     name_tdata: str = "tdata"
     name_tkeep: str = None
+    name_clk: str = None
     tkeep_mode: KeepHandling = KeepHandling.NONE
 
-    def decode(self, sample: Sample):
-        if not hasattr(self, "sample"):
-            self.sample = sample
+    def decode(self, sample: Sample, lastsample: Sample):
+        if hasattr(self, 'clk'):
+            clk = sample.signals[self.clk].value
+            lastclk = lastsample.signals[self.clk].value
+            if not clk or lastclk:
+                return None
+
         valid = sample.signals[self.tvalid].value
         ready = sample.signals[self.tready].value
         last = None
@@ -221,9 +230,8 @@ class AXIStream(StreamDecoder):
         keep = None
         if hasattr(self, 'tkeep'):
             keep = sample.signals[self.tkeep].value
-        lastvalid = self.sample.signals[self.tvalid].value
-        lastready = self.sample.signals[self.tready].value
-        self.sample = sample
+        lastvalid = lastsample.signals[self.tvalid].value
+        lastready = lastsample.signals[self.tready].value
 
         if not self.handshake_decode(sample.timestamp,
                                      valid, ready, lastvalid, lastready):
@@ -255,9 +263,7 @@ class AvalonStream(StreamDecoder):
     name_data: str = "data"
     name_strb: str = None
 
-    def decode(self, sample: Sample):
-        if not hasattr(self, "sample"):
-            self.sample = sample
+    def decode(self, sample: Sample, lastsample: Sample):
         valid = sample.signals[self.valid].value
         ready = sample.signals[self.ready].value
         eop = sample.signals[self.eop].value
@@ -265,9 +271,8 @@ class AvalonStream(StreamDecoder):
         strb = None
         if hasattr(self, 'strb'):
             strb = sample.signals[self.strb].value
-        lastvalid = self.sample.signals[self.valid].value
-        lastready = self.sample.signals[self.ready].value
-        self.sample = sample
+        lastvalid = lastsample.signals[self.valid].value
+        lastready = lastsample.signals[self.ready].value
 
         if not self.handshake_decode(sample.timestamp,
                                      valid, ready, lastvalid, lastready):

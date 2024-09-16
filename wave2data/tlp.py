@@ -611,6 +611,17 @@ class Tlp:
         return False
 
     def __repr__(self):
+        ret = f"{type(self).__name__}({self.fmt_type.name} "
+        ret += f"address={self.address+self.lower_address:#x},"
+        ret += f"tag={self.tag},"
+        ret += f"size={self.byte_count},"
+        ret += f"length={self.length},"
+        ret += f"rid={self.requester_id!r},"
+        ret += f"cid={self.completer_id!r}"
+        if len(self.data) > 0:
+            ret += f"\n    {self.data.hex()})"
+        return ret
+
         return (
             f"{type(self).__name__}(data={self.data}, "
             f"fmt_type={self.fmt_type}, "
@@ -621,17 +632,11 @@ class Tlp:
             f"ep={self.ep}, "
             f"attr={self.attr!s}, "
             f"at={self.at!s}, "
-            f"length={self.length}, "
-            f"completer_id={self.completer_id!r}, "
             f"status={self.status!s}, "
             f"bcm={self.bcm}, "
             f"byte_count={self.byte_count}, "
-            f"requester_id={self.requester_id!r}, "
-            f"tag={self.tag}, "
             f"first_be={self.first_be:#x}, "
             f"last_be={self.last_be:#x}, "
-            f"lower_address={self.lower_address:#x}, "
-            f"address={self.address:#x}, "
             f"ph={self.ph}, "
             f"seq={self.seq})"
         )

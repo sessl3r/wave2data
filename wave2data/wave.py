@@ -48,14 +48,12 @@ class Signal:
         if handle not in self.handle.values():
             return False
         # we have one signal without subsignals
-        if len(self.handle) == 1:
+        if len(self.handle) == 1 and not self.length == 1:
             if self.length == 1:
                 if isinstance(value, bool):
                     self.value = value
                 elif isinstance(value, str):
                     self.value = bool("1" == value)
-                else:
-                    raise NotImplementedError
             else:
                 if isinstance(value, str):
                     if len(value) % 2:
@@ -87,7 +85,7 @@ class Signal:
                 len(a), 'big')
 
 
-@dataclass
+@dataclass(repr=False)
 class Sample:
     """ Wrapper holding the values and timestamp of several signals """
     timestamp: int
@@ -96,3 +94,9 @@ class Sample:
     def __post_init__(self):
         for signal in self.signals.values():
             setattr(self, signal.name, signal)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}"
+            f"(@{self.timestamp} {list(self.signals.values())})"
+        )

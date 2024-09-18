@@ -165,10 +165,10 @@ class VCDWaveInput(WaveInput):
                         break
             # Print all comments
             elif token.kind is TokenKind.COMMENT:
-                print(f"Comment: {token.data}")
+                yield token
             # Print all unhandled tokens
             elif token.kind not in [TokenKind.END, TokenKind.DUMPVARS]:
-                print(token)
+                yield token
 
 
 class QuartusCSVInput(WaveInput):

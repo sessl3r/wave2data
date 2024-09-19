@@ -30,16 +30,24 @@ class Protocol:
 
 
 class TLPAXIStreamAgilex5E(Protocol):
-    def __init__(self, packet: AXISPacket):
-        assert len(packet.data) > 4
+    """ generate TLP from AXIStream decoded data as on Agilex 5E """
 
-        _hdr = packet.data[0:16]
-        data = packet.data[16:]
+    def __init__(self, packet: AXISPacket):
+        dw = packet.datawidth // 8
+        firstbeat = packet.normdata[0:dw]
+        temphdr = firstbeat[16:dw]
+        data = packet.normdata[dw:]
         hdr = bytes()
+        # double word swap the header
         for i in range(16, 0, -4):
-            hdr += _hdr[i-4:i]
-        self.tlp = Tlp().unpack_header(hdr)
-        self.tlp.set_data(data)
+            hdr += temphdr[i-4:i]
+        try:
+            self.tlp = Tlp().unpack_header(hdr)
+            self.tlp.set_data(data)
+        except:
+            self.tlp = None
 
     def __repr__(self):
-        return self.tlp.__repr__()
+        if self.tlp:
+            return self.tlp.__repr__()
+        return "Tlp(Invalid)"

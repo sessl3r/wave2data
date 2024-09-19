@@ -27,7 +27,7 @@ import csv
 # import pylibfst
 import re
 from vcd.reader import TokenKind, tokenize
-from .wave import Sample, Signal
+from .wave import Sample, Signal, TIMEMAP
 
 
 class WaveInput(ABC):
@@ -87,10 +87,6 @@ class VCDWaveInput(WaveInput):
 
     """
 
-    TIMEMAP = {
-        's': 1, 'ms': 1e-3, 'us': 1e-6, 'ns': 1e-9, 'ps': 1e-12, 'fs': 1e-15
-    }
-
     def __init__(self, filename: str):
         super().__init__(filename)
         self._vcd = tokenize(open(filename, "rb"))
@@ -125,7 +121,7 @@ class VCDWaveInput(WaveInput):
             elif token.kind is TokenKind.TIMESCALE:
                 magnitude = token.timescale.magnitude.value
                 unit = token.timescale.unit.value
-                self.timeval = magnitude * self.TIMEMAP[unit]
+                self.timeval = magnitude * TIMEMAP[unit]
             elif token.kind is TokenKind.ENDDEFINITIONS:
                 return
 

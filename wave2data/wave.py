@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 from dataclasses import dataclass, field
 
+TIMEMAP = {'s': 1, 'ms': 1e-3, 'us': 1e-6, 'ns': 1e-9, 'ps': 1e-12, 'fs': 1e-15}
+
 
 @dataclass
 class Signal:
@@ -100,3 +102,11 @@ class Sample:
             f"{self.__class__.__name__}"
             f"(@{self.timestamp} {list(self.signals.values())})"
         )
+
+    @property
+    def timestamp_str(self):
+        for name, value in TIMEMAP.items():
+            timestamp = self.timestamp * (1 / value)
+            if timestamp > 10:
+                return f"{timestamp:.3f}{name}"
+        return f"{timestamp:.03f}{name}"

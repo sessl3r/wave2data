@@ -107,15 +107,13 @@ class AXISPacket(Packet):
         return data
 
     def __repr__(self):
-        ret = f"{self.__class__.__name__}({self.name}" \
-                f"@{self.starttime}:{self.endtime} "\
-                f"beats={self.beats} "\
-                f"backpreasure={self.backpreasure})"
+        ret = super().__repr__()[:-1]
+        ret += f" beats={self.beats} backpreasure={self.backpreasure}"
         if len(self.data) > 0:
-            ret += f"\n    data: {self.data.hex(' ', 4)})"
+            ret += f" data={self.data.hex(' ', 4)}"
         if hasattr(self, 'keep') and self.keep:
-            ret += f"\n    keep: {self.keep.hex(' ', 4)})"
-        return ret
+            ret += f" keep={self.keep.hex(' ', 4)}"
+        return ret + ")"
 
 
     def add(self, data: bytes, keep: bytes = None, endtime: int = None):
@@ -140,9 +138,9 @@ class AVStreamPacket(Packet):
                 f"beats={self.beats} "\
                 f"backpreasure={self.backpreasure})"
         if len(self.data) > 0:
-            ret += f"\n    data: {self.data.hex(' ', 4)})"
+            ret += f" data={self.data.hex(' ', 4)})"
         if len(self.strb) > 0:
-            ret += f"\n    strb: {self.strb.hex(' ', 4)})"
+            ret += f" strb={self.strb.hex(' ', 4)})"
         return ret
 
     def add(self, data: bytes, strb: bytes = None, endtime: int = None):

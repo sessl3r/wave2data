@@ -611,35 +611,34 @@ class Tlp:
         return False
 
     def __repr__(self):
-        ret = f"{type(self).__name__}({self.fmt_type.name} "
-        ret += f"address={self.address+self.lower_address:#x},"
-        ret += f"tag={self.tag},"
-        ret += f"size={self.byte_count},"
-        ret += f"length={self.length},"
-        ret += f"rid={self.requester_id!r},"
-        ret += f"cid={self.completer_id!r}"
+        ret = f"{type(self).__name__}({self.fmt_type.name:12s} "
+        ret += f"{self.lower_address:#010x} {self.address:#010x} "
+        ret += f"tag={self.tag:03d} "
+        ret += f"size={self.byte_count} "
+        ret += f"length={self.length} "
+        ret += f"rid={self.requester_id!s} "
+        ret += f"cid={self.completer_id!s}"
         if len(self.data) > 0:
-            ret += f"\n    {self.data.hex()})"
+            ret += f" data={self.data.hex(' ', 16)})"
         return ret
-
-        return (
-            f"{type(self).__name__}(data={self.data}, "
-            f"fmt_type={self.fmt_type}, "
-            f"tc={self.tc!s}, "
-            f"ln={self.ln}, "
-            f"th={self.th}, "
-            f"td={self.td}, "
-            f"ep={self.ep}, "
-            f"attr={self.attr!s}, "
-            f"at={self.at!s}, "
-            f"status={self.status!s}, "
-            f"bcm={self.bcm}, "
-            f"byte_count={self.byte_count}, "
-            f"first_be={self.first_be:#x}, "
-            f"last_be={self.last_be:#x}, "
-            f"ph={self.ph}, "
-            f"seq={self.seq})"
-        )
+#        return (
+#            f"{type(self).__name__}(data={self.data}, "
+#            f"fmt_type={self.fmt_type}, "
+#            f"tc={self.tc!s}, "
+#            f"ln={self.ln}, "
+#            f"th={self.th}, "
+#            f"td={self.td}, "
+#            f"ep={self.ep}, "
+#            f"attr={self.attr!s}, "
+#            f"at={self.at!s}, "
+#            f"status={self.status!s}, "
+#            f"bcm={self.bcm}, "
+#            f"byte_count={self.byte_count}, "
+#            f"first_be={self.first_be:#x}, "
+#            f"last_be={self.last_be:#x}, "
+#            f"ph={self.ph}, "
+#            f"seq={self.seq})"
+#        )
 
     def __bytes__(self):
         return self.pack()

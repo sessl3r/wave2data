@@ -91,11 +91,20 @@ class AXISPacket(Packet):
     tkeep_mode: KeepHandling = KeepHandling.NONE
 
     def __post_init__(self):
-        # TODO: implement masking / shifting
+        self.normdata = self._normalize_keep(self.data, self.keep)
+
+    def _normalize_keep(self, data: bytes, keep: bytes):
         if self.tkeep_mode == KeepHandling.MASK:
-            pass
+            raise NotImplementedError
         elif self.tkeep_mode == KeepHandling.SHIFT:
-            pass
+            assert len(keep) * 8 == len(data)
+            for bidx in range(len(keep))[::-1]:
+                for x in range(8):
+                    idx = bidx * 8 + (7-x)
+                    val = keep[bidx] & (1 << x) != 0
+                    if not val:
+                        data = data[:idx] + data[idx+1:]
+        return data
 
     def __repr__(self):
         ret = f"{self.__class__.__name__}({self.name}" \
@@ -111,9 +120,10 @@ class AXISPacket(Packet):
 
     def add(self, data: bytes, keep: bytes = None, endtime: int = None):
         """ prepend data from a sample to this packet """
+        self.normdata += self._normalize_keep(data, keep)
         super().add(data, endtime)
         if keep and self.keep:
-            self.keep += self.keep
+            self.keep += keep
 
 
 @dataclass

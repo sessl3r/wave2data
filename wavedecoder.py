@@ -38,6 +38,8 @@ parser.add_argument("wavefile", type=str, help="Waveform file to analyze")
 parser.add_argument("--decoder", help="A JSON formatted string to configure one or multiple decoders")
 parser.add_argument("--protocol", help="A JSON formatted string to configure protocols onto decoders") 
 parser.add_argument("--filter", help="Filter signals in waveinput")
+parser.add_argument("--debug", action="store_true",
+        help="Print samples if decoder, or packets of protocol")
 parser.add_argument("--signals", action="store_true",
                     help="Print all signals in file and exit")
 
@@ -98,6 +100,8 @@ if args.protocol:
         print(f"Bus {bus} : {protocol}")
 
 lastsample = None
+nlen = max([len(n) for n in decoders.keys()])
+
 for sample in wave:
     if not isinstance(sample, wave2data.wave.Sample):
         print(sample)
@@ -110,7 +114,10 @@ for sample in wave:
             if packet.name in protocols:
                 protocol = protocols[packet.name]
                 pp = protocol['cls'](packet)
-                print(f"@{sample.timestamp} {packet.name} {pp}")
+                info = f"{sample.timestamp_str:>010} {packet.name:{nlen}s} {pp}"
+                if args.debug:
+                    info += f"\n  from {packet}"
+                print(info)
             else:
                 print(packet)
     lastsample = copy.deepcopy(sample)

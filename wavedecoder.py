@@ -93,9 +93,15 @@ if args.protocol:
             raise ValueError(f"unable to find decoder '{bus}' in decoders")
         protocols[bus] = {}
         protocols[bus]['cls'] = globals()[value['cls']]
+    print("Running Protocols on decoders:")
+    for bus, protocol in protocols.items():
+        print(f"Bus {bus} : {protocol}")
 
 lastsample = None
 for sample in wave:
+    if not isinstance(sample, wave2data.wave.Sample):
+        print(sample)
+        continue
     if not lastsample:
         lastsample = sample
     for decoder in decoders.values():

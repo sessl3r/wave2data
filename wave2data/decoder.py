@@ -27,7 +27,7 @@ from dataclasses import dataclass, fields, field
 from enum import Enum
 import re
 from .input import WaveInput
-from .wave import Sample
+from .wave import Sample, TIMEMAP
 
 
 class StreamError(Exception):
@@ -52,7 +52,7 @@ class Packet:
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.name} " \
-                f"@{self.starttime}:{self.endtime} {self.data.hex()})"
+                f"{self.starttime_str}:{self.endtime_str})"
 
     def add(self, data: bytes, endtime: int = None):
         """ append data from a sample to this packet """
@@ -60,6 +60,23 @@ class Packet:
         self.data += data
         if endtime:
             self.endtime = endtime
+
+    @property
+    def starttime_str(self):
+        return self._timestamp_str(self.starttime)
+
+    @property
+    def endtime_str(self):
+        return self._timestamp_str(self.endtime)
+
+    def _timestamp_str(self, timestamp: float):
+        if not timestamp:
+            return "NaN"
+        for name, value in TIMEMAP.items():
+            t = timestamp * (1 / value)
+            if t > 10:
+                return f"{t:.3f}{name}"
+        return f"{t:.03f}{name}"
 
 
 @dataclass(repr=False)

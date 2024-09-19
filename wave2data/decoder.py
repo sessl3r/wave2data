@@ -238,7 +238,7 @@ class AXIStream(StreamDecoder):
     name_tdata: str = "tdata"
     name_tkeep: str = None
     name_clk: str = None
-    tkeep_mode: KeepHandling = KeepHandling.NONE
+    tkeep_mode: KeepHandling = KeepHandling.SHIFT
 
     def decode(self, sample: Sample, lastsample: Sample):
         if hasattr(self, 'clk'):

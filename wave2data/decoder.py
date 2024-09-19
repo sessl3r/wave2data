@@ -95,7 +95,7 @@ class AXISPacket(Packet):
         """ prepend data from a sample to this packet """
         super().add(data, endtime)
         if keep and self.keep:
-            self.keep = keep + self.keep
+            self.keep += self.keep
 
 
 @dataclass
@@ -121,7 +121,7 @@ class AVStreamPacket(Packet):
         """ prepend data from a sample to this packet """
         super().add(data, endtime)
         if strb and self.strb:
-            self.strb = strb + self.strb
+            self.strb += self.strb
 
 
 class CorundumTLP(AVStreamPacket):

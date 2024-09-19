@@ -47,6 +47,7 @@ class Packet:
     name: str
     starttime: float
     data: bytes
+    datawidth: int
     endtime: float = None
 
     def __repr__(self):
@@ -241,7 +242,8 @@ class AXIStream(StreamDecoder):
         if not self.packet:
             self.packet = AXISPacket(self.name, starttime=sample.timestamp,
                                      tkeep_mode=self.tkeep_mode,
-                                     data=data, keep=keep)
+                                     data=data, keep=keep,
+                                     datawidth=sample.signals[self.tdata].length)
         else:
             self.packet.add(data=data, keep=keep, endtime=sample.timestamp)
         if not hasattr(self, 'tlast') or last:
@@ -281,7 +283,9 @@ class AvalonStream(StreamDecoder):
         self.beats += 1
         if not self.packet:
             self.packet = AVStreamPacket("name", sample.timestamp,
-                                         data=data, strb=strb)
+                                         tkeep_mode=self.tkeep_mode,
+                                         data=data, strb=strb,
+                                         datawidth=sample.signals[self.tdata].length)
         else:
             self.packet.add(data=data, strb=strb, endtime=sample.timestamp)
         if eop:

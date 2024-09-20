@@ -115,7 +115,6 @@ class AXISPacket(Packet):
             ret += f" keep={self.keep.hex(' ', 4)}"
         return ret + ")"
 
-
     def add(self, data: bytes, keep: bytes = None, endtime: int = None):
         """ prepend data from a sample to this packet """
         self.normdata += self._normalize_keep(data, keep)
@@ -165,6 +164,8 @@ class WaveDecoder(ABC):
     :param name: the name of the decoder
     :param waveinput: subclass of WaveInput to retrieve the samples from
 
+    TODO: really need to find a cleaner way to get sample values etc.
+
     """
 
     name: str
@@ -204,6 +205,7 @@ class WaveDecoder(ABC):
     def decode(self, sample: Sample):
         pass
 
+
 @dataclass
 class StreamDecoder(WaveDecoder):
 
@@ -213,11 +215,15 @@ class StreamDecoder(WaveDecoder):
         self.backpreasure = 0
         self.beats = 0
 
-    def handshake_decode(self, timestamp, valid, ready, lastvalid, lastready):
+    def handshake_decode(self, timestamp, valid, ready, data,
+                         lastvalid, lastready, lastdata):
         # TODO: also should check for all other signals to not change when not
         # ready
-        if lastvalid and not lastready and not valid:
-            raise StreamError(f"@{timestamp} valid dropped while not ready")
+        if lastvalid and not lastready:
+            if not valid:
+                raise StreamError(f"{timestamp} valid dropped while not ready")
+            if lastdata != data:
+                raise StreamError(f"{timestamp} data changed while valid but not ready")
 
         if valid and not ready:
             self.backpreasure += 1
@@ -258,9 +264,11 @@ class AXIStream(StreamDecoder):
             keep = sample.signals[self.tkeep].value
         lastvalid = lastsample.signals[self.tvalid].value
         lastready = lastsample.signals[self.tready].value
+        lastdata = lastsample.signals[self.tdata].value
 
-        if not self.handshake_decode(sample.timestamp,
-                                     valid, ready, lastvalid, lastready):
+        if not self.handshake_decode(sample.timestamp_str,
+                                     valid, ready, data,
+                                     lastvalid, lastready, lastdata):
             return None
 
         self.beats += 1
@@ -300,9 +308,11 @@ class AvalonStream(StreamDecoder):
             strb = sample.signals[self.strb].value
         lastvalid = lastsample.signals[self.valid].value
         lastready = lastsample.signals[self.ready].value
+        lastdata = lastsample.signals[self.data].value
 
         if not self.handshake_decode(sample.timestamp,
-                                     valid, ready, lastvalid, lastready):
+                                     valid, ready, data,
+                                     lastvalid, lastready, lastdata):
             return None
 
         self.beats += 1

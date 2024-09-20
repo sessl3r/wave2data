@@ -101,6 +101,8 @@ if args.protocol:
 
 lastsample = None
 nlen = max([len(n) for n in decoders.keys()])
+decoder_errors = 0
+protocol_errors = 0
 
 for sample in wave:
     if not isinstance(sample, wave2data.wave.Sample):
@@ -109,11 +111,24 @@ for sample in wave:
     if not lastsample:
         lastsample = sample
     for decoder in decoders.values():
-        packet = decoder.decode(sample, lastsample)
+        try:
+            packet = decoder.decode(sample, lastsample)
+        except Exception as e:
+            print(f"ERROR while decoding: {e}")
+            print(f"  Decoder: {decoder}")
+            decoder_errors += 1
+            continue
         if packet:
             if packet.name in protocols:
                 protocol = protocols[packet.name]
-                pp = protocol['cls'](packet)
+                try:
+                    pp = protocol['cls'](packet)
+                except Exception as e:
+                    print(f"ERROR while handling protocol: {e}")
+                    print(f"  Protocol: {protocol}")
+                    print(f"  Packet: {packet}")
+                    protocol_errors += 1
+                    continue
                 info = f"{sample.timestamp_str:>010} {packet.name:{nlen}s} {pp}"
                 if args.debug:
                     info += f"\n  from {packet}"
@@ -121,3 +136,9 @@ for sample in wave:
             else:
                 print(packet)
     lastsample = copy.deepcopy(sample)
+
+if decoder_errors > 0:
+    print(f"ERROR: Found {decoder_errors} decoder errors while scanning! Check the output!")
+if protocol_errors > 0:
+    print(f"ERROR: Found {protocol_errors} protocol errors while scanning! Check the output!")
+

@@ -88,15 +88,17 @@ class AXISPacket(Packet):
     keep: bytes = None
     beats: int = 0
     backpreasure: int = 0
-    tkeep_mode: KeepHandling = KeepHandling.NONE
+    keep_mode: KeepHandling = KeepHandling.NONE
 
     def __post_init__(self):
         self.normdata = self._normalize_keep(self.data, self.keep)
 
     def _normalize_keep(self, data: bytes, keep: bytes):
-        if self.tkeep_mode == KeepHandling.MASK:
+        if not keep:
+            return data
+        if self.keep_mode == KeepHandling.MASK:
             raise NotImplementedError
-        elif self.tkeep_mode == KeepHandling.SHIFT:
+        elif self.keep_mode == KeepHandling.SHIFT:
             assert len(keep) * 8 == len(data)
             for bidx in range(len(keep))[::-1]:
                 for x in range(8):
@@ -179,10 +181,12 @@ class WaveDecoder(ABC):
 
     def __create_signals(self):
         """ create attributes for each signal """
+        self.names = {}
         for f in fields(self):
             if "name_" in f.name:
                 name = f.name.replace("name_", "")
                 regex = getattr(self, f.name)
+                self.names[name] = None
                 if not regex:
                     continue
                 if regex.startswith('!'):
@@ -193,6 +197,7 @@ class WaveDecoder(ABC):
                 for signal in signals.values():
                     if regex in signal.name or re.match(regex, signal.name):
                         setattr(self, name, signal.name)
+                        self.names[name] = signal.name
 
     def __iter__(self):
         for sample in self.waveinput:
@@ -214,21 +219,24 @@ class StreamDecoder(WaveDecoder):
         self.packet = None
         self.backpreasure = 0
         self.beats = 0
+        self.lastvalues = None
 
-    def handshake_decode(self, timestamp, valid, ready, data,
-                         lastvalid, lastready, lastdata):
-        # TODO: also should check for all other signals to not change when not
-        # ready
-        if lastvalid and not lastready:
-            if not valid:
+    def handshake_decode(self, timestamp: float, values: dict,
+                         lastvalues: dict) -> bool:
+        if lastvalues['valid'] and not lastvalues['ready']:
+            if not values['valid']:
                 raise StreamError(f"{timestamp} valid dropped while not ready")
-            if lastdata != data:
+            if lastvalues['data'] != values['data']:
                 raise StreamError(f"{timestamp} data changed while valid but not ready")
+            if (lastvalues['keep'] is not None and values['keep'] is not None) and \
+                    (lastvalues['keep'] != values['keep']):
+                raise StreamError(f"{timestamp} keep changed while valid but not ready")
 
-        if valid and not ready:
+
+        if values['valid'] and not values['ready']:
             self.backpreasure += 1
 
-        if valid and ready:
+        if values['valid'] and values['ready']:
             return True
 
         return False
@@ -238,48 +246,46 @@ class StreamDecoder(WaveDecoder):
 class AXIStream(StreamDecoder):
     """ decoder for AXIStream transfers """
 
-    name_tvalid: str = "tvalid"
-    name_tready: str = "tready"
-    name_tlast: str = None
-    name_tdata: str = "tdata"
-    name_tkeep: str = None
+    name_valid: str = "tvalid"
+    name_ready: str = "tready"
+    name_last: str = None
+    name_data: str = "tdata"
+    name_keep: str = None
     name_clk: str = None
-    tkeep_mode: KeepHandling = KeepHandling.SHIFT
+    keep_mode: KeepHandling = KeepHandling.SHIFT
 
-    def decode(self, sample: Sample, lastsample: Sample):
-        if hasattr(self, 'clk'):
-            clk = sample.signals[self.clk].value
-            lastclk = lastsample.signals[self.clk].value
-            if not clk or lastclk:
+    def decode(self, sample: Sample):
+        values = {}
+        if not self.lastvalues:
+            self.lastvalues = values
+        lastvalues = self.lastvalues
+        for name, key in self.names.items():
+            if key:
+                values[name] = sample.signals[key].value
+            else:
+                values[name] = None
+
+        if values['clk'] is not None:
+            if not values['clk'] or lastvalues['clk']:
+                self.lastvalues['clk'] = values['clk']
                 return None
 
-        valid = sample.signals[self.tvalid].value
-        ready = sample.signals[self.tready].value
-        last = None
-        if hasattr(self, 'tlast'):
-            last = sample.signals[self.tlast].value
-        data = sample.signals[self.tdata].value
-        keep = None
-        if hasattr(self, 'tkeep'):
-            keep = sample.signals[self.tkeep].value
-        lastvalid = lastsample.signals[self.tvalid].value
-        lastready = lastsample.signals[self.tready].value
-        lastdata = lastsample.signals[self.tdata].value
+        self.lastvalues = values
 
-        if not self.handshake_decode(sample.timestamp_str,
-                                     valid, ready, data,
-                                     lastvalid, lastready, lastdata):
+
+        if not self.handshake_decode(sample.timestamp_str, values, lastvalues):
             return None
 
         self.beats += 1
         if not self.packet:
             self.packet = AXISPacket(self.name, starttime=sample.timestamp,
-                                     tkeep_mode=self.tkeep_mode,
-                                     data=data, keep=keep,
-                                     datawidth=sample.signals[self.tdata].length)
+                                     keep_mode=self.keep_mode,
+                                     data=values['data'], keep=values['keep'],
+                                     datawidth=sample.signals[self.data].length)
         else:
-            self.packet.add(data=data, keep=keep, endtime=sample.timestamp)
-        if not hasattr(self, 'tlast') or last:
+            self.packet.add(data=values['data'], keep=values['keep'],
+                            endtime=sample.timestamp)
+        if values['last'] is None or values['last']:
             self.packet.beats = self.beats
             self.packet.backpreasure = self.backpreasure
             self.beats = 0
@@ -318,7 +324,7 @@ class AvalonStream(StreamDecoder):
         self.beats += 1
         if not self.packet:
             self.packet = AVStreamPacket("name", sample.timestamp,
-                                         tkeep_mode=self.tkeep_mode,
+                                         keep_mode=self.keep_mode,
                                          data=data, strb=strb,
                                          datawidth=sample.signals[self.tdata].length)
         else:

@@ -99,7 +99,6 @@ if args.protocol:
     for bus, protocol in protocols.items():
         print(f"Bus {bus} : {protocol}")
 
-lastsample = None
 nlen = max([len(n) for n in decoders.keys()])
 decoder_errors = 0
 protocol_errors = 0
@@ -108,11 +107,9 @@ for sample in wave:
     if not isinstance(sample, wave2data.wave.Sample):
         print(sample)
         continue
-    if not lastsample:
-        lastsample = sample
     for decoder in decoders.values():
         try:
-            packet = decoder.decode(sample, lastsample)
+            packet = decoder.decode(sample)
         except Exception as e:
             print(f"ERROR while decoding: {e}")
             print(f"  Decoder: {decoder}")
@@ -135,7 +132,6 @@ for sample in wave:
                 print(info)
             else:
                 print(packet)
-    lastsample = copy.deepcopy(sample)
 
 if decoder_errors > 0:
     print(f"ERROR: Found {decoder_errors} decoder errors while scanning! Check the output!")

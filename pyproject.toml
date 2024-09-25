@@ -12,7 +12,7 @@ readme="README.md"
 description="Convert protocol data from waveforms into data"
 dependencies = [
   'pylibfst',
-  'pyvcd'
+  'pyvcd@git+https://github.com/sessl3r/pyvcd'
 ]
 classifiers = [
   "Development Status :: 4 - Beta"

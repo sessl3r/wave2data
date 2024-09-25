@@ -21,5 +21,8 @@ classifiers = [
 [project.optional-dependencies]
 test = ["pytest"]
 
+[project.scripts]
+wavedecoder = "wave2data.wavedecoder:main"
+
 [tool.setuptools]
 packages = ["wave2data"]
